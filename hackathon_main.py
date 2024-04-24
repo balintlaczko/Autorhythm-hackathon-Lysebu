@@ -1,4 +1,7 @@
 # %%
+from sonification.utils.matrix import close_matrix
+from sonification.utils.matrix import floodfill_from_point
+from sonification.utils.matrix import drop_small_submasks
 from sonification.utils import matrix
 import cv2
 import numpy as np
@@ -108,8 +111,8 @@ for img_path in images:
 # img_path = "/Users/balintl/Desktop/AUTORYTHM/HACKATHON_p62/2pos_plates_Autoph_p62_jpeg/composite_Simonsen-Autoph-plate01-batch1-plate06-2pos--s22526--ATG14--W0017--P002--T00001--Z001--C01.ome.jpg"
 # img_path = "/Users/balintl/Desktop/AUTORYTHM/HACKATHON_p62/2pos_plates_Autoph_p62_jpeg/composite_Simonsen-Autoph-plate01-batch1-plate06-2pos-final--s30071--ATG16L1--W0069--P002--T00001--Z001--C01.ome.jpg"
 # img_path = "/Users/balintl/Desktop/AUTORYTHM/HACKATHON_p62/2pos_plates_Autoph_p62_jpeg/composite_Simonsen-Autoph-plate01-batch1-plate07-2pos--s14743--UVRAG--W0045--P001--T00001--Z001--C01.ome.jpg"
-# img_path = "/Users/balintl/Desktop/AUTORYTHM/HACKATHON_p62/2pos_plates_Autoph_p62_jpeg/composite_Simonsen-Autoph-plate01-batch1-plate07-2pos-final--s22526--ATG14--W0017--P002--T00001--Z001--C01.ome.jpg"
-img_path = "/Users/balintl/Desktop/AUTORYTHM/HACKATHON_p62/2pos_plates_Autoph_p62_jpeg/composite_Simonsen-Autoph-plate01-batch1-plate05-2pos-final--s14439--TSG101--W0061--P001--T00001--Z001--C01.ome.jpg"
+img_path = "/Users/balintl/Desktop/AUTORYTHM/HACKATHON_p62/2pos_plates_Autoph_p62_jpeg/composite_Simonsen-Autoph-plate01-batch1-plate07-2pos-final--s22526--ATG14--W0017--P002--T00001--Z001--C01.ome.jpg"
+# img_path = "/Users/balintl/Desktop/AUTORYTHM/HACKATHON_p62/2pos_plates_Autoph_p62_jpeg/composite_Simonsen-Autoph-plate01-batch1-plate05-2pos-final--s14439--TSG101--W0061--P001--T00001--Z001--C01.ome.jpg"
 # read image
 img = cv2.imread(img_path)
 # display image
@@ -130,8 +133,8 @@ gray.min(), gray.max()
 # the kernel size is 5x5
 columns = ['i', 'j', 'std']
 patches2std = pd.DataFrame(columns=columns)
-kernel_size = 20
-stride = 10
+kernel_size = 16
+stride = 8
 for i in range(0, gray.shape[0] - kernel_size, stride):
     for j in range(0, gray.shape[1] - kernel_size, stride):
         patch = gray[i:i+kernel_size, j:j+kernel_size]
@@ -152,10 +155,10 @@ plt.plot(patches2std['std'])
 
 # %%
 # create a mask of patches with low standard deviation
-std_50percentile = np.percentile(patches2std['std'], 40)
+std_percentile = np.percentile(patches2std['std'], 50)
 empty_mask = np.zeros_like(gray)
 for _, row in patches2std.iterrows():
-    if row['std'] < std_50percentile:
+    if row['std'] < std_percentile:
         i, j = int(row['i']), int(row['j'])
         empty_mask[i:i+kernel_size, j:j+kernel_size] = 1
 
@@ -178,6 +181,7 @@ matrix.view(masked_img)
 params = cv2.SimpleBlobDetector_Params()
 params.filterByArea = True
 params.minArea = 1
+params.maxArea = 2000
 params.filterByCircularity = False
 params.filterByConvexity = False
 params.filterByInertia = False
@@ -191,14 +195,20 @@ img_with_keypoints_DoH = cv2.drawKeypoints(masked_img, keypoints_DoH, np.array(
 
 # display the image with keypoints
 matrix.view(img_with_keypoints_DoH)
+
 # %%
-print(keypoints_DoH[0].pt, keypoints_DoH[0].size)
+# make a floodfill mask from each point
+all_floodfills = np.zeros_like(empty_mask)
+for point in keypoints_DoH:
+    x, y = int(np.round(point.pt[0])), int(np.round(point.pt[1]))
+    floodfill_mask = floodfill_from_point(empty_mask, [x, y]) - empty_mask
+    all_floodfills += floodfill_mask.astype(np.uint8)
+mask_filtered = empty_mask + all_floodfills
+
 # %%
-# mask out the detected blobs
-for keypoint in keypoints_DoH:
-    i, j = int(keypoint.pt[1]), int(keypoint.pt[0])
-    size = int(keypoint.size)
-    empty_mask[i:i+size, j:j+size] = 0
-masked_img = img * (1 - empty_mask[:, :, np.newaxis])
+matrix.view(all_floodfills * 255)
+
+# %%
+masked_img = img * (1 - mask_filtered[:, :, np.newaxis])
 matrix.view(masked_img)
 # %%
