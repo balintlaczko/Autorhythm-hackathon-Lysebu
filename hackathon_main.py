@@ -1,7 +1,5 @@
 # %%
-from sonification.utils.matrix import close_matrix
 from sonification.utils.matrix import floodfill_from_point
-from sonification.utils.matrix import drop_small_submasks
 from sonification.utils import matrix
 import cv2
 import numpy as np
